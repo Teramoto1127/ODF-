@@ -1,6 +1,6 @@
 // src/lib/useTrainingStore.ts
 import { useCallback, useEffect, useState } from 'react';
-import type { Exercise, MuscleGroup, TrainingSession } from './type';
+import type { Exercise, MuscleGroup, SetEntry, TrainingSession } from './type';
 import { PRESET_EXERCISES } from './exercises';
 import { SEED_SESSIONS } from './mockData';
 import { useAuth } from './AuthContext';
@@ -30,11 +30,6 @@ function saveToStorage<T>(key: string, value: T): void {
   }
 }
 
-/**
- * 登録画面での移行用に、今ブラウザに保存されているローカルデータを読み出す。
- * 一度も保存されたことが無いキーは「移行すべきデータなし」として空配列を返す
- * (PRESET_EXERCISES/SEED_SESSIONSをそのまま移行対象にしないため)。
- */
 export function readLocalTrainingData(): {
   exercises: Exercise[];
   sessions: TrainingSession[];
@@ -49,20 +44,18 @@ export function readLocalTrainingData(): {
   };
 }
 
-/** 登録完了後、ローカルの下書きデータは役目を終えたので消しておく */
 export function clearLocalTrainingData(): void {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(STORAGE_KEY_EXERCISES);
   window.localStorage.removeItem(STORAGE_KEY_SESSIONS);
 }
 
-/**
- * トレーニング記録のデータ層。
- *
- * 未ログイン時は localStorage、ログイン時はサーバーAPIをデータソースとして使う。
- * ログイン中は「サーバーが正」という方針で、localStorageへの書き込みは行わない
- * (2つの保存先が食い違うのを防ぐため)。
- */
+/** ID生成の共通ヘルパー。Date.now()だけだと同一ミリ秒内での連続生成(ワークアウト一括登録時)に
+ *  IDが衝突する恐れがあるため、ランダムな接尾辞を付ける。 */
+function generateLocalId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 export function useTrainingStore() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const isAuthenticated = !!user;
@@ -75,7 +68,6 @@ export function useTrainingStore() {
   );
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // ログイン状態が確定したタイミングでサーバーからデータを取得する
   useEffect(() => {
     if (isAuthLoading || !isAuthenticated) return;
 
@@ -84,8 +76,6 @@ export function useTrainingStore() {
     Promise.all([fetchExercises(), fetchSessions()])
       .then(([serverExercises, serverSessions]) => {
         if (cancelled) return;
-        // プリセット種目は常にクライアント側の定義を使い、
-        // サーバーにはユーザーが追加したカスタム種目だけを持たせる設計。
         setExercises([...PRESET_EXERCISES, ...serverExercises]);
         setSessions(serverSessions);
       })
@@ -101,7 +91,6 @@ export function useTrainingStore() {
     };
   }, [isAuthenticated, isAuthLoading]);
 
-  // 未ログイン時のみ localStorage に保存する
   useEffect(() => {
     if (isAuthenticated) return;
     saveToStorage(STORAGE_KEY_EXERCISES, exercises);
@@ -112,10 +101,6 @@ export function useTrainingStore() {
     saveToStorage(STORAGE_KEY_SESSIONS, sessions);
   }, [sessions, isAuthenticated]);
 
-  /**
-   * 種目追加。ログイン中はサーバーにIDを発行してもらう必要があるため、
-   * この関数は非同期(Promise)になる。呼び出し側(ExercisePicker)もawaitする。
-   */
   const addExercise = useCallback(
     async (name: string, muscleGroup: MuscleGroup): Promise<Exercise | null> => {
       const trimmed = name.trim();
@@ -133,7 +118,7 @@ export function useTrainingStore() {
       }
 
       const exercise: Exercise = {
-        id: `custom-${Date.now()}`,
+        id: generateLocalId('custom'),
         name: trimmed,
         muscleGroup,
         isCustom: true,
@@ -144,20 +129,42 @@ export function useTrainingStore() {
     [isAuthenticated],
   );
 
+  /**
+   * セッションを1件追加する。呼び出し側で await できるよう常にPromiseを返す。
+   * (単発記録・ワークアウト一括記録どちらからも呼ばれる共通のコア関数)
+   */
   const addSession = useCallback(
-    (session: Omit<TrainingSession, 'id'>) => {
+    async (session: Omit<TrainingSession, 'id'>): Promise<void> => {
       if (isAuthenticated) {
-        // UIをブロックしないよう非同期で投げっぱなしにし、成功したらstateへ反映する
-        createSessionApi(session)
-          .then((created) => setSessions((prev) => [...prev, created]))
-          .catch((err) => console.error('[useTrainingStore] Failed to create session on server', err));
+        const created = await createSessionApi(session);
+        setSessions((prev) => [...prev, created]);
         return;
       }
 
-      const newSession: TrainingSession = { ...session, id: `session-${Date.now()}` };
+      const newSession: TrainingSession = { ...session, id: generateLocalId('session') };
       setSessions((prev) => [...prev, newSession]);
     },
     [isAuthenticated],
+  );
+
+  /**
+   * 1回のワークアウトとして複数種目をまとめて記録する。
+   * 同じ workoutId を全エントリに付与し、日付は共通のものを使う。
+   * 並列(Promise.all)ではなく直列(for...of)で送るのは、途中で失敗した時に
+   * 「どこまで登録できたか」を追いやすくするため。
+   */
+  const addWorkout = useCallback(
+    async (
+      date: string,
+      entries: { exerciseId: string; sets: SetEntry[]; note?: string }[],
+    ): Promise<string> => {
+      const workoutId = generateLocalId('workout');
+      for (const entry of entries) {
+        await addSession({ ...entry, date, workoutId });
+      }
+      return workoutId;
+    },
+    [addSession],
   );
 
   const getSessions = useCallback(
@@ -165,5 +172,13 @@ export function useTrainingStore() {
     [sessions],
   );
 
-  return { exercises, sessions, addExercise, addSession, getSessions, isSyncing };
+  return {
+    exercises,
+    sessions,
+    addExercise,
+    addSession,
+    addWorkout,
+    getSessions,
+    isSyncing,
+  };
 }

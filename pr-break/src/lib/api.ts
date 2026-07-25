@@ -1,4 +1,3 @@
-// src/lib/api.ts
 import type { Exercise, MuscleGroup, TrainingSession } from './type';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
@@ -79,6 +78,26 @@ export function createExerciseApi(name: string, muscleGroup: MuscleGroup) {
 
 export function fetchSessions() {
   return request<TrainingSession[]>('/api/sessions');
+}
+
+export interface SessionFilter {
+  exerciseId?: string;
+  from?: string;
+  to?: string;
+}
+
+/**
+ * 期間・種目で絞り込んでセッションを取得する。
+ * 今のクライアントは全件取得(fetchSessions)を使い、クライアント側で
+ * フィルタしている。データ量が増えて全件取得が重くなった場合に、
+ * useTrainingStore からこちらへ切り替える想定で用意している。
+ */
+export function fetchSessionsFiltered(filter: SessionFilter) {
+  const params = new URLSearchParams();
+  if (filter.exerciseId) params.set('exerciseId', filter.exerciseId);
+  if (filter.from) params.set('from', filter.from);
+  if (filter.to) params.set('to', filter.to);
+  return request<TrainingSession[]>(`/api/sessions?${params.toString()}`);
 }
 
 export function createSessionApi(session: Omit<TrainingSession, 'id'>) {
