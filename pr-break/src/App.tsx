@@ -1,122 +1,58 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useMemo, useState } from 'react';
+import { ExercisePicker } from './components/training/ExercisePicker';
+import { SessionForm } from './components/training/SessionForm';
+import { ExerciseHistory } from './components/training/ExerciseHistory';
+import { PlateauBanner } from './components/training/PlateauBanner';
+import { useTrainingStore } from './lib/useTrainingStore';
+import { buildSuggestion, detectPlateau } from './lib/plateau';
+import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const { exercises, addExercise, addSession, getSessions } = useTrainingStore();
+  const [selectedId, setSelectedId] = useState(exercises[0]?.id ?? '');
+
+  const selectedExercise = exercises.find((e) => e.id === selectedId);
+  const sessions = getSessions(selectedId);
+
+  const plateau = useMemo(() => detectPlateau(sessions), [sessions]);
+  const suggestion = useMemo(() => buildSuggestion(plateau), [plateau]);
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="tl-app">
+      <header className="tl-header">
+        <span className="tl-eyebrow">STRENGTH LOG</span>
+        <h1 className="tl-h1">負荷ログ</h1>
+        <p className="tl-tagline">
+          同じ重量×回数が続いたら、教えてくれる。落として、増やして、また伸ばす。
+        </p>
+      </header>
 
-      <div className="ticks"></div>
+      <main className="tl-main">
+        <section className="tl-panel">
+          <ExercisePicker
+            exercises={exercises}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onAddExercise={addExercise}
+          />
+          <PlateauBanner suggestion={suggestion} streak={plateau.streak} />
+          <SessionForm
+            exerciseId={selectedId}
+            exerciseName={selectedExercise?.name ?? ''}
+            onSubmit={addSession}
+          />
+        </section>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        <section className="tl-panel">
+          <ExerciseHistory sessions={sessions} plateau={plateau} />
+        </section>
+      </main>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      <footer className="tl-footer">
+        <p>記録は現在このブラウザのセッション内だけに保持されます（サーバー保存は今後対応予定）。</p>
+      </footer>
+    </div>
+  );
 }
 
-export default App
+export default App;
