@@ -1,1 +1,6 @@
 node_modules
+server/node_modules
+server/fuka-log.sqlite3
+server/fuka-log.sqlite3-wal
+server/fuka-log.sqlite3-shm
+server/.env

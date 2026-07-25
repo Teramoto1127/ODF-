@@ -396,3 +396,33 @@
     transition: none;
   }
 }
+/* App.css に追記 */
+.tl-account-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.tl-account-email {
+  font-family: var(--tl-mono);
+  font-size: 13px;
+  color: var(--tl-chalk-dim);
+}
+
+.tl-auth {
+  max-width: 400px;
+  margin: 0 auto;
+}
+.tl-auth-note {
+  font-size: 13px;
+  color: var(--tl-chalk-dim);
+  margin: 0 0 16px;
+}
+.tl-auth-error {
+  color: var(--tl-effort);
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+.tl-auth-toggle {
+  margin-top: 12px;
+}

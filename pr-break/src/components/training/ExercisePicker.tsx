@@ -1,3 +1,4 @@
+// src/components/training/ExercisePicker.tsx
 import { useState } from 'react';
 import type { Exercise, MuscleGroup } from '../../lib/type';
 import { MUSCLE_GROUPS } from '../../lib/exercises';
@@ -6,7 +7,7 @@ interface ExercisePickerProps {
   exercises: Exercise[];
   selectedId: string;
   onSelect: (id: string) => void;
-  onAddExercise: (name: string, group: MuscleGroup) => Exercise | null;
+  onAddExercise: (name: string, group: MuscleGroup) => Promise<Exercise | null>;
 }
 
 export function ExercisePicker({
@@ -18,19 +19,25 @@ export function ExercisePicker({
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newGroup, setNewGroup] = useState<MuscleGroup>('その他');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const grouped = MUSCLE_GROUPS.map((group) => ({
     group,
     items: exercises.filter((e) => e.muscleGroup === group),
   })).filter((g) => g.items.length > 0);
 
-  function handleAddConfirm() {
-    const created = onAddExercise(newName, newGroup);
-    if (created) {
-      onSelect(created.id);
-      setNewName('');
-      setNewGroup('その他');
-      setIsAdding(false);
+  async function handleAddConfirm() {
+    setIsSubmitting(true);
+    try {
+      const created = await onAddExercise(newName, newGroup);
+      if (created) {
+        onSelect(created.id);
+        setNewName('');
+        setNewGroup('その他');
+        setIsAdding(false);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -88,10 +95,10 @@ export function ExercisePicker({
           <button
             type="button"
             className="tl-btn tl-btn--accent"
-            disabled={!newName.trim()}
+            disabled={!newName.trim() || isSubmitting}
             onClick={handleAddConfirm}
           >
-            追加して選択
+            {isSubmitting ? '追加中…' : '追加して選択'}
           </button>
         </div>
       )}
