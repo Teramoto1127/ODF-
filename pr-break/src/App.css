@@ -426,3 +426,80 @@
 .tl-auth-toggle {
   margin-top: 12px;
 }
+.tl-mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.tl-mode-tab {
+  font-family: var(--tl-mono);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--tl-line);
+  background: transparent;
+  color: var(--tl-chalk-dim);
+  cursor: pointer;
+}
+.tl-mode-tab--active {
+  background: var(--tl-surface-2);
+  color: var(--tl-chalk);
+  border-color: var(--tl-chalk-dim);
+}
+
+.tl-workout-entry {
+  margin-bottom: 18px;
+}
+.tl-workout-divider {
+  border: none;
+  border-top: 1px solid var(--tl-line);
+  margin: 18px 0;
+}
+
+.tl-onerm-badge {
+  font-family: var(--tl-mono);
+  font-size: 12px;
+  color: var(--tl-chalk-dim);
+  margin: 4px 0 0;
+}
+.tl-onerm-badge strong {
+  color: var(--tl-steady);
+}
+
+.tl-chart {
+  margin-bottom: 20px;
+}
+.tl-chart-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.tl-period-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.tl-period-tab {
+  font-family: var(--tl-mono);
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--tl-line);
+  background: transparent;
+  color: var(--tl-chalk-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tl-period-tab--active {
+  background: var(--tl-effort-bg);
+  color: var(--tl-effort);
+  border-color: rgba(255, 90, 54, 0.4);
+}
+.tl-chart-empty {
+  text-align: center;
+  padding: 32px 24px;
+  margin-bottom: 20px;
+}

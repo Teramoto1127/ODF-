@@ -1,4 +1,3 @@
-// server/src/index.js
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -38,8 +37,8 @@ function migrateUserData(userId, { exercises = [], sessions = [] }) {
      VALUES (?, ?, ?, ?, ?)`,
   );
   const insertSession = db.prepare(
-    `INSERT OR IGNORE INTO sessions (id, user_id, exercise_id, date, sets_json, note)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT OR IGNORE INTO sessions (id, user_id, exercise_id, date, sets_json, note, workout_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
 
   const tx = db.transaction(() => {
@@ -48,7 +47,15 @@ function migrateUserData(userId, { exercises = [], sessions = [] }) {
       insertExercise.run(ex.id, userId, ex.name, ex.muscleGroup, 1);
     }
     for (const s of sessions) {
-      insertSession.run(s.id, userId, s.exerciseId, s.date, JSON.stringify(s.sets), s.note ?? null);
+      insertSession.run(
+        s.id,
+        userId,
+        s.exerciseId,
+        s.date,
+        JSON.stringify(s.sets),
+        s.note ?? null,
+        s.workoutId ?? null,
+      );
     }
   });
   tx();
@@ -138,7 +145,26 @@ app.post('/api/exercises', requireAuth, (req, res) => {
 });
 
 app.get('/api/sessions', requireAuth, (req, res) => {
-  const rows = db.prepare('SELECT * FROM sessions WHERE user_id = ?').all(req.userId);
+  // 期間・種目での絞り込みに対応。今はチャートが全件をクライアント側で
+  // フィルタしているので必須ではないが、将来データ量が増えてページング等が
+  // 必要になった時にすぐ使えるよう先に用意しておく。
+  const { exerciseId, from, to } = req.query;
+  let query = 'SELECT * FROM sessions WHERE user_id = ?';
+  const params = [req.userId];
+  if (exerciseId) {
+    query += ' AND exercise_id = ?';
+    params.push(exerciseId);
+  }
+  if (from) {
+    query += ' AND date >= ?';
+    params.push(from);
+  }
+  if (to) {
+    query += ' AND date <= ?';
+    params.push(to);
+  }
+  query += ' ORDER BY date ASC';
+  const rows = db.prepare(query).all(...params);
   res.json(
     rows.map((r) => ({
       id: r.id,
@@ -146,20 +172,21 @@ app.get('/api/sessions', requireAuth, (req, res) => {
       date: r.date,
       sets: JSON.parse(r.sets_json),
       note: r.note ?? undefined,
+      workoutId: r.workout_id ?? undefined,
     })),
   );
 });
 
 app.post('/api/sessions', requireAuth, (req, res) => {
-  const { exerciseId, date, sets, note } = req.body ?? {};
+  const { exerciseId, date, sets, note, workoutId } = req.body ?? {};
   if (!exerciseId || !date || !Array.isArray(sets) || sets.length === 0) {
     return res.status(400).json({ error: 'セッションの形式が正しくありません。' });
   }
   const id = randomUUID();
   db.prepare(
-    'INSERT INTO sessions (id, user_id, exercise_id, date, sets_json, note) VALUES (?, ?, ?, ?, ?, ?)',
-  ).run(id, req.userId, exerciseId, date, JSON.stringify(sets), note ?? null);
-  res.status(201).json({ id, exerciseId, date, sets, note });
+    'INSERT INTO sessions (id, user_id, exercise_id, date, sets_json, note, workout_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  ).run(id, req.userId, exerciseId, date, JSON.stringify(sets), note ?? null, workoutId ?? null);
+  res.status(201).json({ id, exerciseId, date, sets, note, workoutId });
 });
 
 app.listen(PORT, () => {
