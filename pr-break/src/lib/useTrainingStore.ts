@@ -1,10 +1,17 @@
-// src/lib/useTrainingStore.ts
 import { useCallback, useEffect, useState } from 'react';
 import type { Exercise, MuscleGroup, SetEntry, TrainingSession } from './type';
 import { PRESET_EXERCISES } from './exercises';
 import { SEED_SESSIONS } from './mockData';
 import { useAuth } from './AuthContext';
-import { fetchExercises, fetchSessions, createExerciseApi, createSessionApi } from './api';
+import {
+  fetchExercises,
+  fetchSessions,
+  createExerciseApi,
+  createSessionApi,
+  updateSessionApi,
+  deleteSessionApi,
+  type SessionPatch,
+} from './api';
 
 export const STORAGE_KEY_EXERCISES = 'fuka-log:exercises';
 export const STORAGE_KEY_SESSIONS = 'fuka-log:sessions';
@@ -50,8 +57,6 @@ export function clearLocalTrainingData(): void {
   window.localStorage.removeItem(STORAGE_KEY_SESSIONS);
 }
 
-/** ID生成の共通ヘルパー。Date.now()だけだと同一ミリ秒内での連続生成(ワークアウト一括登録時)に
- *  IDが衝突する恐れがあるため、ランダムな接尾辞を付ける。 */
 function generateLocalId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -129,10 +134,6 @@ export function useTrainingStore() {
     [isAuthenticated],
   );
 
-  /**
-   * セッションを1件追加する。呼び出し側で await できるよう常にPromiseを返す。
-   * (単発記録・ワークアウト一括記録どちらからも呼ばれる共通のコア関数)
-   */
   const addSession = useCallback(
     async (session: Omit<TrainingSession, 'id'>): Promise<void> => {
       if (isAuthenticated) {
@@ -147,12 +148,6 @@ export function useTrainingStore() {
     [isAuthenticated],
   );
 
-  /**
-   * 1回のワークアウトとして複数種目をまとめて記録する。
-   * 同じ workoutId を全エントリに付与し、日付は共通のものを使う。
-   * 並列(Promise.all)ではなく直列(for...of)で送るのは、途中で失敗した時に
-   * 「どこまで登録できたか」を追いやすくするため。
-   */
   const addWorkout = useCallback(
     async (
       date: string,
@@ -167,6 +162,31 @@ export function useTrainingStore() {
     [addSession],
   );
 
+  /** 既存セッションの日付・セット・メモを部分更新する */
+  const updateSession = useCallback(
+    async (id: string, patch: SessionPatch): Promise<void> => {
+      if (isAuthenticated) {
+        const updated = await updateSessionApi(id, patch);
+        setSessions((prev) => prev.map((s) => (s.id === id ? updated : s)));
+        return;
+      }
+
+      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+    },
+    [isAuthenticated],
+  );
+
+  /** セッションを1件削除する */
+  const deleteSession = useCallback(
+    async (id: string): Promise<void> => {
+      if (isAuthenticated) {
+        await deleteSessionApi(id);
+      }
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+    },
+    [isAuthenticated],
+  );
+
   const getSessions = useCallback(
     (exerciseId: string) => sessions.filter((s) => s.exerciseId === exerciseId),
     [sessions],
@@ -178,6 +198,8 @@ export function useTrainingStore() {
     addExercise,
     addSession,
     addWorkout,
+    updateSession,
+    deleteSession,
     getSessions,
     isSyncing,
   };

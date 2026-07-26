@@ -1,9 +1,9 @@
-// src/App.tsx
 import { useMemo, useState } from 'react';
 import { ExercisePicker } from './components/training/ExercisePicker';
 import { SessionForm } from './components/training/SessionForm';
 import { WorkoutForm } from './components/training/WorkoutForm';
 import { ExerciseHistory } from './components/training/ExerciseHistory';
+import { WorkoutHistory } from './components/training/WorkoutHistory';
 import { ProgressChart } from './components/training/ProgressChart';
 import { PlateauBanner } from './components/training/PlateauBanner';
 import { AuthForm } from './components/auth/AuthForm';
@@ -13,12 +13,23 @@ import { buildSuggestion, detectPlateau } from './lib/plateau';
 import './App.css';
 
 type EntryMode = 'single' | 'workout';
+type ViewMode = 'byExercise' | 'byWorkout';
 
 function App() {
   const { user, isLoading: isAuthLoading, logout } = useAuth();
-  const { exercises, addExercise, addSession, addWorkout, getSessions } = useTrainingStore();
+  const {
+    exercises,
+    sessions: allSessions,
+    addExercise,
+    addSession,
+    addWorkout,
+    updateSession,
+    deleteSession,
+    getSessions,
+  } = useTrainingStore();
   const [selectedId, setSelectedId] = useState(exercises[0]?.id ?? '');
   const [entryMode, setEntryMode] = useState<EntryMode>('single');
+  const [viewMode, setViewMode] = useState<ViewMode>('byExercise');
 
   const selectedExercise = exercises.find((e) => e.id === selectedId);
   const sessions = getSessions(selectedId);
@@ -91,8 +102,41 @@ function App() {
           </section>
 
           <section className="tl-panel">
-            <ProgressChart sessions={sessions} />
-            <ExerciseHistory sessions={sessions} plateau={plateau} />
+            <div className="tl-mode-tabs">
+              <button
+                type="button"
+                className={`tl-mode-tab${viewMode === 'byExercise' ? ' tl-mode-tab--active' : ''}`}
+                onClick={() => setViewMode('byExercise')}
+              >
+                種目別
+              </button>
+              <button
+                type="button"
+                className={`tl-mode-tab${viewMode === 'byWorkout' ? ' tl-mode-tab--active' : ''}`}
+                onClick={() => setViewMode('byWorkout')}
+              >
+                ワークアウト別
+              </button>
+            </div>
+
+            {viewMode === 'byExercise' ? (
+              <>
+                <ProgressChart sessions={sessions} />
+                <ExerciseHistory
+                  sessions={sessions}
+                  plateau={plateau}
+                  onUpdateSession={updateSession}
+                  onDeleteSession={deleteSession}
+                />
+              </>
+            ) : (
+              <WorkoutHistory
+                sessions={allSessions}
+                exercises={exercises}
+                onUpdateSession={updateSession}
+                onDeleteSession={deleteSession}
+              />
+            )}
           </section>
         </main>
       )}

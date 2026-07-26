@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
 import { randomUUID } from 'crypto';
 import { db } from './db.js';
 import { hashPassword, verifyPassword, signToken, requireAuth } from './auth.js';
@@ -10,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 
-app.use(express.json({ limit: '2mb' })); // 移行データ込みなので少し余裕を持たせる
+app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
 
@@ -21,16 +22,20 @@ const COOKIE_OPTS = {
   maxAge: 30 * 24 * 60 * 60 * 1000, // 30日
 };
 
+// ログイン・登録への総当たり攻撃対策。
+// 同一IPから15分間に10回を超えてリクエストがあれば429を返す。
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'リクエストが多すぎます。しばらく待ってから再度お試しください。' },
+});
+
 function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-/**
- * migrationData: { exercises: Exercise[], sessions: TrainingSession[] } を
- * 新規ユーザーIDに紐付けて一括インサートする。
- * カスタム種目(isCustom)のみ移行し、プリセット種目はサーバー側の
- * 既定データを使う想定（idが競合しないようにするため）。
- */
 function migrateUserData(userId, { exercises = [], sessions = [] }) {
   const insertExercise = db.prepare(
     `INSERT OR IGNORE INTO exercises (id, user_id, name, muscle_group, is_custom)
@@ -43,7 +48,7 @@ function migrateUserData(userId, { exercises = [], sessions = [] }) {
 
   const tx = db.transaction(() => {
     for (const ex of exercises) {
-      if (!ex.isCustom) continue; // プリセットはサーバー側で別途持つ
+      if (!ex.isCustom) continue;
       insertExercise.run(ex.id, userId, ex.name, ex.muscleGroup, 1);
     }
     for (const s of sessions) {
@@ -63,7 +68,7 @@ function migrateUserData(userId, { exercises = [], sessions = [] }) {
 
 // --- 認証 ---
 
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', authLimiter, async (req, res) => {
   const { email, password, migrate } = req.body ?? {};
 
   if (!isValidEmail(email)) {
@@ -93,7 +98,7 @@ app.post('/api/register', async (req, res) => {
   res.status(201).json({ id: userId, email });
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', authLimiter, async (req, res) => {
   const { email, password } = req.body ?? {};
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   if (!user) {
@@ -118,7 +123,7 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json(user);
 });
 
-// --- データ (種目・セッション) ---
+// --- 種目 ---
 
 app.get('/api/exercises', requireAuth, (req, res) => {
   const rows = db.prepare('SELECT * FROM exercises WHERE user_id = ?').all(req.userId);
@@ -144,10 +149,9 @@ app.post('/api/exercises', requireAuth, (req, res) => {
   res.status(201).json({ id, name: name.trim(), muscleGroup: muscleGroup ?? 'その他', isCustom: true });
 });
 
+// --- セッション ---
+
 app.get('/api/sessions', requireAuth, (req, res) => {
-  // 期間・種目での絞り込みに対応。今はチャートが全件をクライアント側で
-  // フィルタしているので必須ではないが、将来データ量が増えてページング等が
-  // 必要になった時にすぐ使えるよう先に用意しておく。
   const { exerciseId, from, to } = req.query;
   let query = 'SELECT * FROM sessions WHERE user_id = ?';
   const params = [req.userId];
@@ -187,6 +191,51 @@ app.post('/api/sessions', requireAuth, (req, res) => {
     'INSERT INTO sessions (id, user_id, exercise_id, date, sets_json, note, workout_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
   ).run(id, req.userId, exerciseId, date, JSON.stringify(sets), note ?? null, workoutId ?? null);
   res.status(201).json({ id, exerciseId, date, sets, note, workoutId });
+});
+
+app.patch('/api/sessions/:id', requireAuth, (req, res) => {
+  const { id } = req.params;
+  const existing = db
+    .prepare('SELECT * FROM sessions WHERE id = ? AND user_id = ?')
+    .get(id, req.userId);
+  if (!existing) {
+    return res.status(404).json({ error: '記録が見つかりません。' });
+  }
+
+  const { date, sets, note } = req.body ?? {};
+  if (sets !== undefined && (!Array.isArray(sets) || sets.length === 0)) {
+    return res.status(400).json({ error: 'セットの形式が正しくありません。' });
+  }
+
+  const nextDate = date ?? existing.date;
+  const nextSetsJson = sets !== undefined ? JSON.stringify(sets) : existing.sets_json;
+  const nextNote = note !== undefined ? note : existing.note;
+
+  db.prepare('UPDATE sessions SET date = ?, sets_json = ?, note = ? WHERE id = ? AND user_id = ?').run(
+    nextDate,
+    nextSetsJson,
+    nextNote,
+    id,
+    req.userId,
+  );
+
+  res.json({
+    id,
+    exerciseId: existing.exercise_id,
+    date: nextDate,
+    sets: JSON.parse(nextSetsJson),
+    note: nextNote ?? undefined,
+    workoutId: existing.workout_id ?? undefined,
+  });
+});
+
+app.delete('/api/sessions/:id', requireAuth, (req, res) => {
+  const { id } = req.params;
+  const result = db.prepare('DELETE FROM sessions WHERE id = ? AND user_id = ?').run(id, req.userId);
+  if (result.changes === 0) {
+    return res.status(404).json({ error: '記録が見つかりません。' });
+  }
+  res.status(204).end();
 });
 
 app.listen(PORT, () => {
