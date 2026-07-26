@@ -6,11 +6,6 @@ interface ApiErrorBody {
   error: string;
 }
 
-/**
- * 共通のfetchラッパー。
- * credentials: 'include' でCookie(JWT)を毎回送受信する。
- * エラー時はサーバーが返す { error: string } を優先してメッセージ化する。
- */
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',
@@ -24,7 +19,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       const body = (await res.json()) as ApiErrorBody;
       if (body.error) message = body.error;
     } catch {
-      // JSON以外のエラーレスポンス(サーバーダウン時のHTML等)は無視してデフォルト文言を使う
+      // JSON以外のエラーレスポンスは無視してデフォルト文言を使う
     }
     throw new Error(message);
   }
@@ -86,12 +81,6 @@ export interface SessionFilter {
   to?: string;
 }
 
-/**
- * 期間・種目で絞り込んでセッションを取得する。
- * 今のクライアントは全件取得(fetchSessions)を使い、クライアント側で
- * フィルタしている。データ量が増えて全件取得が重くなった場合に、
- * useTrainingStore からこちらへ切り替える想定で用意している。
- */
 export function fetchSessionsFiltered(filter: SessionFilter) {
   const params = new URLSearchParams();
   if (filter.exerciseId) params.set('exerciseId', filter.exerciseId);
@@ -105,4 +94,17 @@ export function createSessionApi(session: Omit<TrainingSession, 'id'>) {
     method: 'POST',
     body: JSON.stringify(session),
   });
+}
+
+export type SessionPatch = Partial<Pick<TrainingSession, 'date' | 'sets' | 'note'>>;
+
+export function updateSessionApi(id: string, patch: SessionPatch) {
+  return request<TrainingSession>(`/api/sessions/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+export function deleteSessionApi(id: string) {
+  return request<void>(`/api/sessions/${id}`, { method: 'DELETE' });
 }

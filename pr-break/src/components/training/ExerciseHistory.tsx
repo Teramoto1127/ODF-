@@ -1,11 +1,16 @@
-// src/components/training/ExerciseHistory.tsx
+
+import { useState } from 'react';
 import type { PlateauResult, TrainingSession } from '../../lib/type';
 import { SetBars } from './SetBars';
+import { SessionEditForm } from './SessionEditForm';
 import { getAllTimeBestOneRepMax } from '../../lib/oneRepMax';
+import type { SessionPatch } from '../../lib/api';
 
 interface ExerciseHistoryProps {
   sessions: TrainingSession[];
   plateau: PlateauResult;
+  onUpdateSession: (id: string, patch: SessionPatch) => Promise<void>;
+  onDeleteSession: (id: string) => Promise<void>;
 }
 
 function formatDate(iso: string): string {
@@ -13,13 +18,32 @@ function formatDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-export function ExerciseHistory({ sessions, plateau }: ExerciseHistoryProps) {
+export function ExerciseHistory({
+  sessions,
+  plateau,
+  onUpdateSession,
+  onDeleteSession,
+}: ExerciseHistoryProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date));
   const maxWeight = sessions.reduce(
     (max, s) => Math.max(max, ...s.sets.map((set) => set.weight)),
     0,
   );
   const bestOneRepMax = getAllTimeBestOneRepMax(sessions);
+
+  async function handleDelete(id: string) {
+    const confirmed = window.confirm('この記録を削除しますか？元に戻せません。');
+    if (!confirmed) return;
+    setDeletingId(id);
+    try {
+      await onDeleteSession(id);
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   if (sorted.length === 0) {
     return (
@@ -45,11 +69,42 @@ export function ExerciseHistory({ sessions, plateau }: ExerciseHistoryProps) {
         {sorted.map((session) => (
           <div className="tl-history-row" key={session.id}>
             <span className="tl-history-date">{formatDate(session.date)}</span>
-            <SetBars
-              sets={session.sets}
-              maxWeight={maxWeight}
-              highlight={plateau.isPlateaued ? plateau.topSet : null}
-            />
+
+            {editingId === session.id ? (
+              <SessionEditForm
+                session={session}
+                onCancel={() => setEditingId(null)}
+                onSave={async (patch) => {
+                  await onUpdateSession(session.id, patch);
+                  setEditingId(null);
+                }}
+              />
+            ) : (
+              <>
+                <SetBars
+                  sets={session.sets}
+                  maxWeight={maxWeight}
+                  highlight={plateau.isPlateaued ? plateau.topSet : null}
+                />
+                <div className="tl-history-row-actions">
+                  <button
+                    type="button"
+                    className="tl-btn tl-btn--ghost"
+                    onClick={() => setEditingId(session.id)}
+                  >
+                    編集
+                  </button>
+                  <button
+                    type="button"
+                    className="tl-btn tl-btn--ghost"
+                    onClick={() => handleDelete(session.id)}
+                    disabled={deletingId === session.id}
+                  >
+                    {deletingId === session.id ? '削除中…' : '削除'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         ))}
       </div>
