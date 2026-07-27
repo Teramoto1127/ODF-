@@ -1,3 +1,5 @@
+
+// src/App.tsx
 import { useMemo, useState } from 'react';
 import { ExercisePicker } from './components/training/ExercisePicker';
 import { SessionForm } from './components/training/SessionForm';
@@ -6,6 +8,9 @@ import { ExerciseHistory } from './components/training/ExerciseHistory';
 import { WorkoutHistory } from './components/training/WorkoutHistory';
 import { ProgressChart } from './components/training/ProgressChart';
 import { PlateauBanner } from './components/training/PlateauBanner';
+import { TrainingCalendar } from './components/training/TrainingCalendar';
+import { WeeklyVolume } from './components/training/WeeklyVolume';
+import { PersonalRecordsBoard } from './components/training/PersonalRecordsBoard';
 import { AuthForm } from './components/auth/AuthForm';
 import { useTrainingStore } from './lib/useTrainingStore';
 import { useAuth } from './lib/AuthContext';
@@ -13,7 +18,15 @@ import { buildSuggestion, detectPlateau } from './lib/plateau';
 import './App.css';
 
 type EntryMode = 'single' | 'workout';
-type ViewMode = 'byExercise' | 'byWorkout';
+type ViewMode = 'byExercise' | 'byWorkout' | 'calendar' | 'volume' | 'records';
+
+const VIEW_TABS: { key: ViewMode; label: string }[] = [
+  { key: 'byExercise', label: '種目別' },
+  { key: 'byWorkout', label: 'ワークアウト別' },
+  { key: 'calendar', label: 'カレンダー' },
+  { key: 'volume', label: '週間ボリューム' },
+  { key: 'records', label: 'PR一覧' },
+];
 
 function App() {
   const { user, isLoading: isAuthLoading, logout } = useAuth();
@@ -102,24 +115,20 @@ function App() {
           </section>
 
           <section className="tl-panel">
-            <div className="tl-mode-tabs">
-              <button
-                type="button"
-                className={`tl-mode-tab${viewMode === 'byExercise' ? ' tl-mode-tab--active' : ''}`}
-                onClick={() => setViewMode('byExercise')}
-              >
-                種目別
-              </button>
-              <button
-                type="button"
-                className={`tl-mode-tab${viewMode === 'byWorkout' ? ' tl-mode-tab--active' : ''}`}
-                onClick={() => setViewMode('byWorkout')}
-              >
-                ワークアウト別
-              </button>
+            <div className="tl-mode-tabs tl-mode-tabs--wrap">
+              {VIEW_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`tl-mode-tab${viewMode === tab.key ? ' tl-mode-tab--active' : ''}`}
+                  onClick={() => setViewMode(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
-            {viewMode === 'byExercise' ? (
+            {viewMode === 'byExercise' && (
               <>
                 <ProgressChart sessions={sessions} />
                 <ExerciseHistory
@@ -129,13 +138,21 @@ function App() {
                   onDeleteSession={deleteSession}
                 />
               </>
-            ) : (
+            )}
+            {viewMode === 'byWorkout' && (
               <WorkoutHistory
                 sessions={allSessions}
                 exercises={exercises}
                 onUpdateSession={updateSession}
                 onDeleteSession={deleteSession}
               />
+            )}
+            {viewMode === 'calendar' && <TrainingCalendar sessions={allSessions} />}
+            {viewMode === 'volume' && (
+              <WeeklyVolume sessions={allSessions} exercises={exercises} />
+            )}
+            {viewMode === 'records' && (
+              <PersonalRecordsBoard sessions={allSessions} exercises={exercises} />
             )}
           </section>
         </main>
