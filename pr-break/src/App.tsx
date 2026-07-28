@@ -87,8 +87,7 @@ function App() {
     return (
       <div className="tl-app">
         <header className="tl-header">
-          <span className="tl-eyebrow">STRENGTH LOG</span>
-          <h1 className="tl-h1">負荷ログ</h1>
+          <h1 className="tl-h1">RINGS</h1>
         </header>
         <div style={{ padding: '0 24px' }}>
           <ResetPasswordForm
@@ -106,8 +105,7 @@ function App() {
   return (
     <div className="tl-app">
       <header className="tl-header">
-        <span className="tl-eyebrow">STRENGTH LOG</span>
-        <h1 className="tl-h1">負荷ログ</h1>
+        <h1 className="tl-h1">RINGS</h1>
         <p className="tl-tagline">
           同じ重量×回数が続いたら、教えてくれる。落として、増やして、また伸ばす。
         </p>
