@@ -4,7 +4,7 @@ import type { PlateauResult, SetEntry, Suggestion, TrainingSession } from './typ
 export const PLATEAU_THRESHOLD = 3;
 
 /** セットの中から一番きつい（重い→同じ重さなら回数が多い）セットを代表値として取り出す */
-function getTopSet(sets: SetEntry[]): SetEntry | null {
+export function getTopSet(sets: SetEntry[]): SetEntry | null {
   if (sets.length === 0) return null;
   return sets.reduce((best, current) => {
     if (current.weight > best.weight) return current;
