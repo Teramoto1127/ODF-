@@ -1,5 +1,3 @@
-
-// src/App.tsx
 import { useMemo, useState } from 'react';
 import { ExercisePicker } from './components/training/ExercisePicker';
 import { SessionForm } from './components/training/SessionForm';
@@ -15,6 +13,9 @@ import { AuthForm } from './components/auth/AuthForm';
 import { useTrainingStore } from './lib/useTrainingStore';
 import { useAuth } from './lib/AuthContext';
 import { buildSuggestion, detectPlateau } from './lib/plateau';
+import { calculateStreak } from './lib/streak';
+import { getWeeklyVolumeByMuscleGroup } from './lib/volume';
+import { getAllTimeBestOneRepMax } from './lib/oneRepMax';
 import './App.css';
 
 type EntryMode = 'single' | 'workout';
@@ -50,6 +51,13 @@ function App() {
   const plateau = useMemo(() => detectPlateau(sessions), [sessions]);
   const suggestion = useMemo(() => buildSuggestion(plateau), [plateau]);
 
+  const streak = useMemo(() => calculateStreak(allSessions), [allSessions]);
+  const weeklyVolumeTotal = useMemo(() => {
+    const byGroup = getWeeklyVolumeByMuscleGroup(allSessions, exercises);
+    return byGroup.reduce((sum, g) => sum + g.volume, 0);
+  }, [allSessions, exercises]);
+  const bestOneRepMax = useMemo(() => getAllTimeBestOneRepMax(allSessions), [allSessions]);
+
   if (isAuthLoading) {
     return null;
   }
@@ -73,89 +81,117 @@ function App() {
       </header>
 
       {!user ? (
-        <AuthForm />
+        <div style={{ padding: '0 24px' }}>
+          <AuthForm />
+        </div>
       ) : (
-        <main className="tl-main">
-          <section className="tl-panel">
-            <div className="tl-mode-tabs">
-              <button
-                type="button"
-                className={`tl-mode-tab${entryMode === 'single' ? ' tl-mode-tab--active' : ''}`}
-                onClick={() => setEntryMode('single')}
-              >
-                1種目ずつ記録
-              </button>
-              <button
-                type="button"
-                className={`tl-mode-tab${entryMode === 'workout' ? ' tl-mode-tab--active' : ''}`}
-                onClick={() => setEntryMode('workout')}
-              >
-                ワークアウトでまとめて記録
-              </button>
+        <>
+          <div className="tl-stats-row">
+            <div className="tl-stat-card">
+              <p className="tl-stat-label">継続日数</p>
+              <p className="tl-stat-value">
+                {streak}
+                <span className="tl-stat-unit">日</span>
+              </p>
             </div>
+            <div className="tl-stat-card">
+              <p className="tl-stat-label">週間ボリューム</p>
+              <p className="tl-stat-value">
+                {weeklyVolumeTotal.toLocaleString()}
+                <span className="tl-stat-unit">kg</span>
+              </p>
+            </div>
+            <div className="tl-stat-card tl-stat-card--dark">
+              <p className="tl-stat-label">推定1RM 自己ベスト</p>
+              <p className="tl-stat-value">
+                {bestOneRepMax}
+                <span className="tl-stat-unit">kg</span>
+              </p>
+            </div>
+          </div>
 
-            {entryMode === 'single' ? (
-              <>
-                <ExercisePicker
-                  exercises={exercises}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                  onAddExercise={addExercise}
-                />
-                <PlateauBanner suggestion={suggestion} streak={plateau.streak} />
-                <SessionForm
-                  exerciseId={selectedId}
-                  exerciseName={selectedExercise?.name ?? ''}
-                  onSubmit={addSession}
-                />
-              </>
-            ) : (
-              <WorkoutForm exercises={exercises} onSubmit={addWorkout} />
-            )}
-          </section>
-
-          <section className="tl-panel">
-            <div className="tl-mode-tabs tl-mode-tabs--wrap">
-              {VIEW_TABS.map((tab) => (
+          <main className="tl-main">
+            <section className="tl-panel">
+              <div className="tl-mode-tabs">
                 <button
-                  key={tab.key}
                   type="button"
-                  className={`tl-mode-tab${viewMode === tab.key ? ' tl-mode-tab--active' : ''}`}
-                  onClick={() => setViewMode(tab.key)}
+                  className={`tl-mode-tab${entryMode === 'single' ? ' tl-mode-tab--active' : ''}`}
+                  onClick={() => setEntryMode('single')}
                 >
-                  {tab.label}
+                  1種目ずつ記録
                 </button>
-              ))}
-            </div>
+                <button
+                  type="button"
+                  className={`tl-mode-tab${entryMode === 'workout' ? ' tl-mode-tab--active' : ''}`}
+                  onClick={() => setEntryMode('workout')}
+                >
+                  ワークアウトでまとめて記録
+                </button>
+              </div>
 
-            {viewMode === 'byExercise' && (
-              <>
-                <ProgressChart sessions={sessions} />
-                <ExerciseHistory
-                  sessions={sessions}
-                  plateau={plateau}
+              {entryMode === 'single' ? (
+                <>
+                  <ExercisePicker
+                    exercises={exercises}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    onAddExercise={addExercise}
+                  />
+                  <PlateauBanner suggestion={suggestion} streak={plateau.streak} />
+                  <SessionForm
+                    exerciseId={selectedId}
+                    exerciseName={selectedExercise?.name ?? ''}
+                    onSubmit={addSession}
+                  />
+                </>
+              ) : (
+                <WorkoutForm exercises={exercises} onSubmit={addWorkout} />
+              )}
+            </section>
+
+            <section className="tl-panel">
+              <div className="tl-mode-tabs tl-mode-tabs--wrap">
+                {VIEW_TABS.map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    className={`tl-mode-tab${viewMode === tab.key ? ' tl-mode-tab--active' : ''}`}
+                    onClick={() => setViewMode(tab.key)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {viewMode === 'byExercise' && (
+                <>
+                  <ProgressChart sessions={sessions} />
+                  <ExerciseHistory
+                    sessions={sessions}
+                    plateau={plateau}
+                    onUpdateSession={updateSession}
+                    onDeleteSession={deleteSession}
+                  />
+                </>
+              )}
+              {viewMode === 'byWorkout' && (
+                <WorkoutHistory
+                  sessions={allSessions}
+                  exercises={exercises}
                   onUpdateSession={updateSession}
                   onDeleteSession={deleteSession}
                 />
-              </>
-            )}
-            {viewMode === 'byWorkout' && (
-              <WorkoutHistory
-                sessions={allSessions}
-                exercises={exercises}
-                onUpdateSession={updateSession}
-                onDeleteSession={deleteSession}
-              />
-            )}
-            {viewMode === 'calendar' && <TrainingCalendar sessions={allSessions} />}
-            {viewMode === 'volume' && (
-              <WeeklyVolume sessions={allSessions} exercises={exercises} />
-            )}
-            {viewMode === 'records' && (
-              <PersonalRecordsBoard sessions={allSessions} exercises={exercises} />
-            )}
-          </section>
-        </main>
+              )}
+              {viewMode === 'calendar' && <TrainingCalendar sessions={allSessions} />}
+              {viewMode === 'volume' && (
+                <WeeklyVolume sessions={allSessions} exercises={exercises} />
+              )}
+              {viewMode === 'records' && (
+                <PersonalRecordsBoard sessions={allSessions} exercises={exercises} />
+              )}
+            </section>
+          </main>
+        </>
       )}
 
       <footer className="tl-footer">
