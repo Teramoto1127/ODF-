@@ -7,10 +7,13 @@ import {
   fetchExercises,
   fetchSessions,
   createExerciseApi,
+  updateExerciseApi,
+  deleteExerciseApi,
   createSessionApi,
   updateSessionApi,
   deleteSessionApi,
   type SessionPatch,
+  type ExercisePatch,
 } from './api';
 
 export const STORAGE_KEY_EXERCISES = 'fuka-log:exercises';
@@ -134,6 +137,34 @@ export function useTrainingStore() {
     [isAuthenticated],
   );
 
+  /** カスタム種目のリネーム・部位変更。プリセット種目には呼ばないこと。 */
+  const updateExercise = useCallback(
+    async (id: string, patch: ExercisePatch): Promise<void> => {
+      if (isAuthenticated) {
+        const updated = await updateExerciseApi(id, patch);
+        setExercises((prev) => prev.map((e) => (e.id === id ? updated : e)));
+        return;
+      }
+      setExercises((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+    },
+    [isAuthenticated],
+  );
+
+  /**
+   * カスタム種目を削除する。紐づく過去セッションも一緒に削除する
+   * (サーバー側と挙動を揃え、孤立した記録を残さないため)。
+   */
+  const deleteExercise = useCallback(
+    async (id: string): Promise<void> => {
+      if (isAuthenticated) {
+        await deleteExerciseApi(id);
+      }
+      setExercises((prev) => prev.filter((e) => e.id !== id));
+      setSessions((prev) => prev.filter((s) => s.exerciseId !== id));
+    },
+    [isAuthenticated],
+  );
+
   const addSession = useCallback(
     async (session: Omit<TrainingSession, 'id'>): Promise<void> => {
       if (isAuthenticated) {
@@ -162,7 +193,6 @@ export function useTrainingStore() {
     [addSession],
   );
 
-  /** 既存セッションの日付・セット・メモを部分更新する */
   const updateSession = useCallback(
     async (id: string, patch: SessionPatch): Promise<void> => {
       if (isAuthenticated) {
@@ -170,13 +200,11 @@ export function useTrainingStore() {
         setSessions((prev) => prev.map((s) => (s.id === id ? updated : s)));
         return;
       }
-
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
     },
     [isAuthenticated],
   );
 
-  /** セッションを1件削除する */
   const deleteSession = useCallback(
     async (id: string): Promise<void> => {
       if (isAuthenticated) {
@@ -196,6 +224,8 @@ export function useTrainingStore() {
     exercises,
     sessions,
     addExercise,
+    updateExercise,
+    deleteExercise,
     addSession,
     addWorkout,
     updateSession,

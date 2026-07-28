@@ -1,13 +1,15 @@
-// src/components/training/ExercisePicker.tsx
 import { useState } from 'react';
 import type { Exercise, MuscleGroup } from '../../lib/type';
 import { MUSCLE_GROUPS } from '../../lib/exercises';
+import type { ExercisePatch } from '../../lib/api';
 
 interface ExercisePickerProps {
   exercises: Exercise[];
   selectedId: string;
   onSelect: (id: string) => void;
   onAddExercise: (name: string, group: MuscleGroup) => Promise<Exercise | null>;
+  onUpdateExercise: (id: string, patch: ExercisePatch) => Promise<void>;
+  onDeleteExercise: (id: string) => Promise<void>;
 }
 
 export function ExercisePicker({
@@ -15,16 +17,25 @@ export function ExercisePicker({
   selectedId,
   onSelect,
   onAddExercise,
+  onUpdateExercise,
+  onDeleteExercise,
 }: ExercisePickerProps) {
   const [isAdding, setIsAdding] = useState(false);
+  const [isManaging, setIsManaging] = useState(false);
   const [newName, setNewName] = useState('');
   const [newGroup, setNewGroup] = useState<MuscleGroup>('その他');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const grouped = MUSCLE_GROUPS.map((group) => ({
     group,
     items: exercises.filter((e) => e.muscleGroup === group),
   })).filter((g) => g.items.length > 0);
+
+  const customExercises = exercises.filter((e) => e.isCustom);
 
   async function handleAddConfirm() {
     setIsSubmitting(true);
@@ -38,6 +49,36 @@ export function ExercisePicker({
       }
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  function startEditing(exercise: Exercise) {
+    setEditingId(exercise.id);
+    setEditingName(exercise.name);
+  }
+
+  async function handleRenameConfirm(id: string) {
+    const trimmed = editingName.trim();
+    if (!trimmed) return;
+    setBusyId(id);
+    try {
+      await onUpdateExercise(id, { name: trimmed });
+      setEditingId(null);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(exercise: Exercise) {
+    const confirmed = window.confirm(
+      `「${exercise.name}」を削除しますか？\nこの種目に紐づく過去の記録もすべて削除されます。`,
+    );
+    if (!confirmed) return;
+    setBusyId(exercise.id);
+    try {
+      await onDeleteExercise(exercise.id);
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -70,6 +111,13 @@ export function ExercisePicker({
         >
           {isAdding ? '閉じる' : '+ 種目を追加'}
         </button>
+        <button
+          type="button"
+          className="tl-btn tl-btn--ghost"
+          onClick={() => setIsManaging((v) => !v)}
+        >
+          {isManaging ? '閉じる' : '種目を管理'}
+        </button>
       </div>
 
       {isAdding && (
@@ -100,6 +148,64 @@ export function ExercisePicker({
           >
             {isSubmitting ? '追加中…' : '追加して選択'}
           </button>
+        </div>
+      )}
+
+      {isManaging && (
+        <div className="tl-exercise-manager">
+          {customExercises.length === 0 ? (
+            <p className="tl-empty-text">追加したカスタム種目がありません。</p>
+          ) : (
+            customExercises.map((ex) => (
+              <div className="tl-exercise-manager-row" key={ex.id}>
+                {editingId === ex.id ? (
+                  <>
+                    <input
+                      className="tl-input"
+                      type="text"
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="tl-btn tl-btn--accent"
+                      disabled={!editingName.trim() || busyId === ex.id}
+                      onClick={() => handleRenameConfirm(ex.id)}
+                    >
+                      保存
+                    </button>
+                    <button
+                      type="button"
+                      className="tl-btn tl-btn--ghost"
+                      onClick={() => setEditingId(null)}
+                    >
+                      キャンセル
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="tl-exercise-manager-name">{ex.name}</span>
+                    <span className="tl-exercise-manager-group">{ex.muscleGroup}</span>
+                    <button
+                      type="button"
+                      className="tl-btn tl-btn--ghost"
+                      onClick={() => startEditing(ex)}
+                    >
+                      名前を変更
+                    </button>
+                    <button
+                      type="button"
+                      className="tl-btn tl-btn--ghost"
+                      disabled={busyId === ex.id}
+                      onClick={() => handleDelete(ex)}
+                    >
+                      {busyId === ex.id ? '削除中…' : '削除'}
+                    </button>
+                  </>
+                )}
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>

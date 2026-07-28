@@ -1,9 +1,7 @@
-// server/src/auth.js
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { randomBytes } from 'crypto';
 
-// 本番運用時は環境変数から読むこと。ここではローカル開発用の
-// フォールバック値を用意しているだけなので、必ず .env で上書きする。
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-change-me';
 const TOKEN_EXPIRY = '30d';
 
@@ -28,7 +26,11 @@ export function verifyToken(token) {
   }
 }
 
-/** Express ミドルウェア: Cookie の token を検証し、req.userId にセットする */
+/** パスワードリセット用の推測困難なトークンを生成する */
+export function generateResetToken() {
+  return randomBytes(32).toString('hex');
+}
+
 export function requireAuth(req, res, next) {
   const token = req.cookies?.token;
   const userId = token ? verifyToken(token) : null;

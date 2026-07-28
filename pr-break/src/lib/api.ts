@@ -60,6 +60,37 @@ export function fetchMe() {
   return request<ApiUser>('/api/me');
 }
 
+// --- パスワードリセット ---
+
+export function requestPasswordReset(email: string) {
+  return request<{ ok: true }>('/api/password-reset/request', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function confirmPasswordReset(token: string, newPassword: string) {
+  return request<{ ok: true }>('/api/password-reset/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ token, newPassword }),
+  });
+}
+
+// --- アカウント設定 ---
+
+export function changePasswordApi(currentPassword: string, newPassword: string) {
+  return request<{ ok: true }>('/api/account/password', {
+    method: 'PATCH',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export function deleteAccountApi() {
+  return request<void>('/api/account', { method: 'DELETE' });
+}
+
+// --- 種目 ---
+
 export function fetchExercises() {
   return request<Exercise[]>('/api/exercises');
 }
@@ -70,6 +101,21 @@ export function createExerciseApi(name: string, muscleGroup: MuscleGroup) {
     body: JSON.stringify({ name, muscleGroup }),
   });
 }
+
+export type ExercisePatch = Partial<Pick<Exercise, 'name' | 'muscleGroup'>>;
+
+export function updateExerciseApi(id: string, patch: ExercisePatch) {
+  return request<Exercise>(`/api/exercises/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+export function deleteExerciseApi(id: string) {
+  return request<void>(`/api/exercises/${id}`, { method: 'DELETE' });
+}
+
+// --- セッション ---
 
 export function fetchSessions() {
   return request<TrainingSession[]>('/api/sessions');

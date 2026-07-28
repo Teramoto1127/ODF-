@@ -1,4 +1,3 @@
-// src/components/auth/AuthForm.tsx
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useAuth } from '../../lib/AuthContext';
@@ -6,7 +5,11 @@ import { readLocalTrainingData, clearLocalTrainingData } from '../../lib/useTrai
 
 type Mode = 'login' | 'register';
 
-export function AuthForm() {
+interface AuthFormProps {
+  onForgotPassword: () => void;
+}
+
+export function AuthForm({ onForgotPassword }: AuthFormProps) {
   const { login, register } = useAuth();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
@@ -22,7 +25,6 @@ export function AuthForm() {
       if (mode === 'login') {
         await login(email, password);
       } else {
-        // 登録時のみ、今ブラウザに残っている記録をアカウントへ移行する
         const localData = readLocalTrainingData();
         await register(email, password, localData);
         clearLocalTrainingData();
@@ -84,6 +86,16 @@ export function AuthForm() {
           {isSubmitting ? '処理中…' : mode === 'login' ? 'ログイン' : '登録する'}
         </button>
       </form>
+
+      {mode === 'login' && (
+        <button
+          type="button"
+          className="tl-btn tl-btn--ghost tl-btn--full tl-auth-toggle"
+          onClick={onForgotPassword}
+        >
+          パスワードをお忘れですか？
+        </button>
+      )}
 
       <button
         type="button"

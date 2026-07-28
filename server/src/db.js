@@ -32,11 +32,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 `);
 
-// マイグレーション: 既存のDBファイルに workout_id 列が無ければ追加する。
-// 「1回のワークアウトで複数種目を記録する」機能のために、
-// 同じワークアウトに属するセッションをグルーピングするためのID。
-const sessionColumns = db.prepare(`PRAGMA table_info(sessions)`).all();
-const hasWorkoutId = sessionColumns.some((c) => c.name === 'workout_id');
-if (!hasWorkoutId) {
-  db.exec(`ALTER TABLE sessions ADD COLUMN workout_id TEXT`);
+/**
+ * 素朴なマイグレーション: 指定テーブルに指定カラムが無ければ ALTER TABLE で追加する。
+ * 個人開発規模のため、専用マイグレーションツールは導入せずこの方式で済ませている。
+ */
+function addColumnIfMissing(table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  const exists = columns.some((c) => c.name === column);
+  if (!exists) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
+
+addColumnIfMissing('sessions', 'workout_id', 'TEXT');
+addColumnIfMissing('users', 'reset_token', 'TEXT');
+addColumnIfMissing('users', 'reset_token_expires', 'TEXT');
