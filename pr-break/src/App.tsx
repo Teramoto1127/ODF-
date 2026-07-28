@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ExercisePicker } from './components/training/ExercisePicker';
 import { SessionForm } from './components/training/SessionForm';
 import { WorkoutForm } from './components/training/WorkoutForm';
@@ -10,6 +10,9 @@ import { TrainingCalendar } from './components/training/TrainingCalendar';
 import { WeeklyVolume } from './components/training/WeeklyVolume';
 import { PersonalRecordsBoard } from './components/training/PersonalRecordsBoard';
 import { AuthForm } from './components/auth/AuthForm';
+import { ForgotPasswordForm } from './components/auth/ForgotPasswordForm';
+import { ResetPasswordForm } from './components/auth/ResetPasswordForm';
+import { AccountSettings } from './components/account/AccountSettings';
 import { useTrainingStore } from './lib/useTrainingStore';
 import { useAuth } from './lib/AuthContext';
 import { buildSuggestion, detectPlateau } from './lib/plateau';
@@ -19,7 +22,8 @@ import { getAllTimeBestOneRepMax } from './lib/oneRepMax';
 import './App.css';
 
 type EntryMode = 'single' | 'workout';
-type ViewMode = 'byExercise' | 'byWorkout' | 'calendar' | 'volume' | 'records';
+type ViewMode = 'byExercise' | 'byWorkout' | 'calendar' | 'volume' | 'records' | 'account';
+type AuthScreen = 'login' | 'forgotPassword';
 
 const VIEW_TABS: { key: ViewMode; label: string }[] = [
   { key: 'byExercise', label: '種目別' },
@@ -27,23 +31,41 @@ const VIEW_TABS: { key: ViewMode; label: string }[] = [
   { key: 'calendar', label: 'カレンダー' },
   { key: 'volume', label: '週間ボリューム' },
   { key: 'records', label: 'PR一覧' },
+  { key: 'account', label: 'アカウント' },
 ];
 
 function App() {
-  const { user, isLoading: isAuthLoading, logout } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const {
     exercises,
     sessions: allSessions,
     addExercise,
+    updateExercise,
+    deleteExercise,
     addSession,
     addWorkout,
     updateSession,
     deleteSession,
     getSessions,
   } = useTrainingStore();
+
   const [selectedId, setSelectedId] = useState(exercises[0]?.id ?? '');
   const [entryMode, setEntryMode] = useState<EntryMode>('single');
   const [viewMode, setViewMode] = useState<ViewMode>('byExercise');
+  const [authScreen, setAuthScreen] = useState<AuthScreen>('login');
+
+  // メール内のパスワードリセットリンク(?resetToken=...)を検知する
+  const [resetToken] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get('resetToken'),
+  );
+
+  // 選択中の種目が削除された場合、他の種目に選択を戻す
+  useEffect(() => {
+    if (exercises.length === 0) return;
+    if (!exercises.some((e) => e.id === selectedId)) {
+      setSelectedId(exercises[0].id);
+    }
+  }, [exercises, selectedId]);
 
   const selectedExercise = exercises.find((e) => e.id === selectedId);
   const sessions = getSessions(selectedId);
@@ -62,6 +84,27 @@ function App() {
     return null;
   }
 
+  // パスワードリセットリンクからのアクセスは、ログイン状態に関わらず最優先で表示する
+  if (resetToken) {
+    return (
+      <div className="tl-app">
+        <header className="tl-header">
+          <span className="tl-eyebrow">STRENGTH LOG</span>
+          <h1 className="tl-h1">負荷ログ</h1>
+        </header>
+        <div style={{ padding: '0 24px' }}>
+          <ResetPasswordForm
+            token={resetToken}
+            onDone={() => {
+              window.history.replaceState({}, '', window.location.pathname);
+              window.location.reload();
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="tl-app">
       <header className="tl-header">
@@ -73,16 +116,17 @@ function App() {
         {user && (
           <div className="tl-account-bar">
             <span className="tl-account-email">{user.email}</span>
-            <button type="button" className="tl-btn tl-btn--ghost" onClick={() => logout()}>
-              ログアウト
-            </button>
           </div>
         )}
       </header>
 
       {!user ? (
         <div style={{ padding: '0 24px' }}>
-          <AuthForm />
+          {authScreen === 'login' ? (
+            <AuthForm onForgotPassword={() => setAuthScreen('forgotPassword')} />
+          ) : (
+            <ForgotPasswordForm onBack={() => setAuthScreen('login')} />
+          )}
         </div>
       ) : (
         <>
@@ -136,6 +180,8 @@ function App() {
                     selectedId={selectedId}
                     onSelect={setSelectedId}
                     onAddExercise={addExercise}
+                    onUpdateExercise={updateExercise}
+                    onDeleteExercise={deleteExercise}
                   />
                   <PlateauBanner suggestion={suggestion} streak={plateau.streak} />
                   <SessionForm
@@ -189,6 +235,7 @@ function App() {
               {viewMode === 'records' && (
                 <PersonalRecordsBoard sessions={allSessions} exercises={exercises} />
               )}
+              {viewMode === 'account' && <AccountSettings />}
             </section>
           </main>
         </>

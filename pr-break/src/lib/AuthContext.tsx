@@ -1,16 +1,27 @@
-// src/lib/AuthContext.tsx
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import { fetchMe, loginUser, logoutUser, registerUser } from './api';
+import {
+  fetchMe,
+  loginUser,
+  logoutUser,
+  registerUser,
+  requestPasswordReset,
+  confirmPasswordReset,
+  changePasswordApi,
+  deleteAccountApi,
+} from './api';
 import type { ApiUser, MigratePayload } from './api';
 
 interface AuthContextValue {
   user: ApiUser | null;
-  /** 初回起動時に /api/me でCookieの有効性を確認している間 true。ログイン画面のちらつき防止用 */
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, migrate?: MigratePayload) => Promise<void>;
   logout: () => Promise<void>;
+  requestReset: (email: string) => Promise<void>;
+  confirmReset: (token: string, newPassword: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  deleteAccount: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -20,7 +31,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // 未ログインの場合は /api/me が401を返すだけなので、これはエラー扱いにしない。
     fetchMe()
       .then(setUser)
       .catch(() => setUser(null))
@@ -45,8 +55,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const requestReset = useCallback(async (email: string) => {
+    await requestPasswordReset(email);
+  }, []);
+
+  const confirmReset = useCallback(async (token: string, newPassword: string) => {
+    await confirmPasswordReset(token, newPassword);
+  }, []);
+
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    await changePasswordApi(currentPassword, newPassword);
+  }, []);
+
+  const deleteAccount = useCallback(async () => {
+    await deleteAccountApi();
+    setUser(null);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoading,
+        login,
+        register,
+        logout,
+        requestReset,
+        confirmReset,
+        changePassword,
+        deleteAccount,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

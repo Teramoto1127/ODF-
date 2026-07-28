@@ -5,11 +5,19 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { randomUUID } from 'crypto';
 import { db } from './db.js';
-import { hashPassword, verifyPassword, signToken, requireAuth } from './auth.js';
+import {
+  hashPassword,
+  verifyPassword,
+  signToken,
+  requireAuth,
+  generateResetToken,
+} from './auth.js';
+import { sendPasswordResetEmail } from './mail.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const APP_URL = process.env.APP_URL || CLIENT_ORIGIN;
 
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
@@ -19,11 +27,9 @@ const COOKIE_OPTS = {
   httpOnly: true,
   sameSite: 'lax',
   secure: process.env.NODE_ENV === 'production',
-  maxAge: 30 * 24 * 60 * 60 * 1000, // 30日
+  maxAge: 30 * 24 * 60 * 60 * 1000,
 };
 
-// ログイン・登録への総当たり攻撃対策。
-// 同一IPから15分間に10回を超えてリクエストがあれば429を返す。
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -34,6 +40,10 @@ const authLimiter = rateLimit({
 
 function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isValidPassword(password) {
+  return typeof password === 'string' && password.length >= 8;
 }
 
 function migrateUserData(userId, { exercises = [], sessions = [] }) {
@@ -74,7 +84,7 @@ app.post('/api/register', authLimiter, async (req, res) => {
   if (!isValidEmail(email)) {
     return res.status(400).json({ error: 'メールアドレスの形式が正しくありません。' });
   }
-  if (typeof password !== 'string' || password.length < 8) {
+  if (!isValidPassword(password)) {
     return res.status(400).json({ error: 'パスワードは8文字以上にしてください。' });
   }
 
@@ -123,6 +133,85 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json(user);
 });
 
+// --- パスワードリセット ---
+
+app.post('/api/password-reset/request', authLimiter, async (req, res) => {
+  const { email } = req.body ?? {};
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'メールアドレスの形式が正しくありません。' });
+  }
+
+  const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  // ユーザーの存在有無を外部に漏らさないため、見つからない場合も同じ成功レスポンスを返す。
+  if (user) {
+    const token = generateResetToken();
+    const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 60分
+    db.prepare('UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?').run(
+      token,
+      expires,
+      user.id,
+    );
+    const resetUrl = `${APP_URL}/?resetToken=${token}`;
+    try {
+      await sendPasswordResetEmail(email, resetUrl);
+    } catch (err) {
+      console.error('[password-reset] Failed to send email', err);
+      return res.status(500).json({ error: 'メールの送信に失敗しました。時間を置いて再度お試しください。' });
+    }
+  }
+
+  res.json({ ok: true });
+});
+
+app.post('/api/password-reset/confirm', authLimiter, async (req, res) => {
+  const { token, newPassword } = req.body ?? {};
+  if (typeof token !== 'string' || !token) {
+    return res.status(400).json({ error: 'トークンが正しくありません。' });
+  }
+  if (!isValidPassword(newPassword)) {
+    return res.status(400).json({ error: 'パスワードは8文字以上にしてください。' });
+  }
+
+  const user = db.prepare('SELECT * FROM users WHERE reset_token = ?').get(token);
+  if (!user || !user.reset_token_expires || new Date(user.reset_token_expires) < new Date()) {
+    return res.status(400).json({ error: 'リンクの有効期限が切れています。もう一度お試しください。' });
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  db.prepare(
+    'UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?',
+  ).run(passwordHash, user.id);
+
+  res.json({ ok: true });
+});
+
+// --- アカウント設定 ---
+
+app.patch('/api/account/password', requireAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body ?? {};
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.userId);
+
+  const valid = await verifyPassword(currentPassword ?? '', user.password_hash);
+  if (!valid) {
+    return res.status(401).json({ error: '現在のパスワードが正しくありません。' });
+  }
+  if (!isValidPassword(newPassword)) {
+    return res.status(400).json({ error: '新しいパスワードは8文字以上にしてください。' });
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, req.userId);
+  res.json({ ok: true });
+});
+
+app.delete('/api/account', requireAuth, (req, res) => {
+  // users テーブルへの外部キーが ON DELETE CASCADE のため、
+  // exercises / sessions も連動して削除される。
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.userId);
+  res.clearCookie('token', COOKIE_OPTS);
+  res.status(204).end();
+});
+
 // --- 種目 ---
 
 app.get('/api/exercises', requireAuth, (req, res) => {
@@ -147,6 +236,53 @@ app.post('/api/exercises', requireAuth, (req, res) => {
     'INSERT INTO exercises (id, user_id, name, muscle_group, is_custom) VALUES (?, ?, ?, ?, 1)',
   ).run(id, req.userId, name.trim(), muscleGroup ?? 'その他');
   res.status(201).json({ id, name: name.trim(), muscleGroup: muscleGroup ?? 'その他', isCustom: true });
+});
+
+app.patch('/api/exercises/:id', requireAuth, (req, res) => {
+  const { id } = req.params;
+  const existing = db
+    .prepare('SELECT * FROM exercises WHERE id = ? AND user_id = ?')
+    .get(id, req.userId);
+  if (!existing) {
+    return res.status(404).json({ error: '種目が見つかりません。' });
+  }
+
+  const { name, muscleGroup } = req.body ?? {};
+  if (name !== undefined && !name.trim()) {
+    return res.status(400).json({ error: '種目名を入力してください。' });
+  }
+
+  const nextName = name !== undefined ? name.trim() : existing.name;
+  const nextGroup = muscleGroup ?? existing.muscle_group;
+
+  db.prepare('UPDATE exercises SET name = ?, muscle_group = ? WHERE id = ? AND user_id = ?').run(
+    nextName,
+    nextGroup,
+    id,
+    req.userId,
+  );
+
+  res.json({ id, name: nextName, muscleGroup: nextGroup, isCustom: true });
+});
+
+app.delete('/api/exercises/:id', requireAuth, (req, res) => {
+  const { id } = req.params;
+  const existing = db
+    .prepare('SELECT id FROM exercises WHERE id = ? AND user_id = ?')
+    .get(id, req.userId);
+  if (!existing) {
+    return res.status(404).json({ error: '種目が見つかりません。' });
+  }
+
+  // 種目を削除する際、紐づく過去セッションも一緒に削除する。
+  // (孤立した記録を残さず、データの一貫性を優先する設計判断)
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM sessions WHERE exercise_id = ? AND user_id = ?').run(id, req.userId);
+    db.prepare('DELETE FROM exercises WHERE id = ? AND user_id = ?').run(id, req.userId);
+  });
+  tx();
+
+  res.status(204).end();
 });
 
 // --- セッション ---
