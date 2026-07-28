@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ExercisePicker } from './components/training/ExercisePicker';
 import { SessionForm } from './components/training/SessionForm';
 import { WorkoutForm } from './components/training/WorkoutForm';
+import { RecommendedWorkout } from './components/training/RecommendedWorkout';
 import { ExerciseHistory } from './components/training/ExerciseHistory';
 import { WorkoutHistory } from './components/training/WorkoutHistory';
 import { ProgressChart } from './components/training/ProgressChart';
@@ -21,7 +22,7 @@ import { getWeeklyVolumeByMuscleGroup } from './lib/volume';
 import { getAllTimeBestOneRepMax } from './lib/oneRepMax';
 import './App.css';
 
-type EntryMode = 'single' | 'workout';
+type EntryMode = 'recommend' | 'single' | 'workout';
 type ViewMode = 'byExercise' | 'byWorkout' | 'calendar' | 'volume' | 'records' | 'account';
 type AuthScreen = 'login' | 'forgotPassword';
 
@@ -50,16 +51,14 @@ function App() {
   } = useTrainingStore();
 
   const [selectedId, setSelectedId] = useState(exercises[0]?.id ?? '');
-  const [entryMode, setEntryMode] = useState<EntryMode>('single');
+  const [entryMode, setEntryMode] = useState<EntryMode>('recommend');
   const [viewMode, setViewMode] = useState<ViewMode>('byExercise');
   const [authScreen, setAuthScreen] = useState<AuthScreen>('login');
 
-  // メール内のパスワードリセットリンク(?resetToken=...)を検知する
   const [resetToken] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get('resetToken'),
   );
 
-  // 選択中の種目が削除された場合、他の種目に選択を戻す
   useEffect(() => {
     if (exercises.length === 0) return;
     if (!exercises.some((e) => e.id === selectedId)) {
@@ -84,7 +83,6 @@ function App() {
     return null;
   }
 
-  // パスワードリセットリンクからのアクセスは、ログイン状態に関わらず最優先で表示する
   if (resetToken) {
     return (
       <div className="tl-app">
@@ -159,6 +157,13 @@ function App() {
               <div className="tl-mode-tabs">
                 <button
                   type="button"
+                  className={`tl-mode-tab${entryMode === 'recommend' ? ' tl-mode-tab--active' : ''}`}
+                  onClick={() => setEntryMode('recommend')}
+                >
+                  今日のおすすめ
+                </button>
+                <button
+                  type="button"
                   className={`tl-mode-tab${entryMode === 'single' ? ' tl-mode-tab--active' : ''}`}
                   onClick={() => setEntryMode('single')}
                 >
@@ -173,7 +178,11 @@ function App() {
                 </button>
               </div>
 
-              {entryMode === 'single' ? (
+              {entryMode === 'recommend' && (
+                <RecommendedWorkout sessions={allSessions} exercises={exercises} />
+              )}
+
+              {entryMode === 'single' && (
                 <>
                   <ExercisePicker
                     exercises={exercises}
@@ -190,7 +199,9 @@ function App() {
                     onSubmit={addSession}
                   />
                 </>
-              ) : (
+              )}
+
+              {entryMode === 'workout' && (
                 <WorkoutForm exercises={exercises} onSubmit={addWorkout} />
               )}
             </section>

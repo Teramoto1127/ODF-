@@ -843,3 +843,74 @@
     transition: none;
   }
 }
+.tl-recommend {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tl-recommend-rest {
+  margin: 0;
+}
+
+.tl-recommend-groups {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.tl-recommend-group-chip {
+  font-family: var(--tl-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--tl-on-ink);
+  background: var(--tl-ink);
+  border-radius: 999px;
+  padding: 5px 14px;
+}
+
+.tl-recommend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tl-recommend-card {
+  background: var(--tl-surface-2);
+  border: 1px solid var(--tl-line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.tl-recommend-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.tl-recommend-exercise-name {
+  font-weight: 700;
+  color: var(--tl-chalk);
+}
+.tl-recommend-group-tag {
+  font-family: var(--tl-mono);
+  font-size: 11px;
+  color: var(--tl-chalk-dim);
+  background: var(--tl-surface);
+  border: 1px solid var(--tl-line);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+.tl-recommend-metrics {
+  font-family: var(--tl-mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--tl-effort);
+  margin: 0 0 6px;
+}
+.tl-recommend-metrics--muted {
+  color: var(--tl-chalk-dim);
+}
+.tl-recommend-reason {
+  font-size: 13px;
+  color: var(--tl-chalk-dim);
+  line-height: 1.6;
+  margin: 0;
+}
