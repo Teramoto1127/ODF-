@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Exercise, MuscleGroup, SetEntry, TrainingSession } from './type';
 import { PRESET_EXERCISES } from './exercises';
-import { SEED_SESSIONS } from './mockData';
 import { useAuth } from './AuthContext';
 import {
   fetchExercises,
@@ -68,13 +67,31 @@ export function useTrainingStore() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const isAuthenticated = !!user;
 
+  // デモ用の初期データ(SEED_SESSIONS)は使わず、未ログイン時は空の状態から始める。
+  // 以前はここでSEED_SESSIONSを既定値にしていたが、それがlocalStorageに
+  // 自動保存され、新規登録のたびに「移行データ」として紛れ込むバグの原因になっていた。
   const [exercises, setExercises] = useState<Exercise[]>(() =>
     loadFromStorage(STORAGE_KEY_EXERCISES, PRESET_EXERCISES),
   );
   const [sessions, setSessions] = useState<TrainingSession[]>(() =>
-    loadFromStorage(STORAGE_KEY_SESSIONS, SEED_SESSIONS),
+    loadFromStorage(STORAGE_KEY_SESSIONS, []),
   );
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // ログアウト(または退会)を検知したら、直前のユーザーのデータが
+  // ローカル状態やlocalStorageに残らないよう完全にリセットする。
+  // これが無いと、ログアウト直後に「未ログイン時は保存する」処理が働き、
+  // 直前のユーザーのサーバーデータがlocalStorageへ書き戻されてしまい、
+  // 次に別アカウントで新規登録した際に誤って移行されてしまう。
+  const wasAuthenticatedRef = useRef(false);
+  useEffect(() => {
+    if (wasAuthenticatedRef.current && !isAuthenticated) {
+      clearLocalTrainingData();
+      setExercises(PRESET_EXERCISES);
+      setSessions([]);
+    }
+    wasAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (isAuthLoading || !isAuthenticated) return;
@@ -137,7 +154,6 @@ export function useTrainingStore() {
     [isAuthenticated],
   );
 
-  /** カスタム種目のリネーム・部位変更。プリセット種目には呼ばないこと。 */
   const updateExercise = useCallback(
     async (id: string, patch: ExercisePatch): Promise<void> => {
       if (isAuthenticated) {
@@ -150,10 +166,6 @@ export function useTrainingStore() {
     [isAuthenticated],
   );
 
-  /**
-   * カスタム種目を削除する。紐づく過去セッションも一緒に削除する
-   * (サーバー側と挙動を揃え、孤立した記録を残さないため)。
-   */
   const deleteExercise = useCallback(
     async (id: string): Promise<void> => {
       if (isAuthenticated) {
