@@ -5,7 +5,7 @@ import type { SetEntry, TrainingSession } from '../../lib/type';
 interface SessionFormProps {
   exerciseId: string;
   exerciseName: string;
-  onSubmit: (session: Omit<TrainingSession, 'id'>) => void;
+  onSubmit: (session: Omit<TrainingSession, 'id'>) => Promise<void>;
 }
 
 function today(): string {
@@ -19,6 +19,8 @@ function emptySet(): SetEntry {
 export function SessionForm({ exerciseId, exerciseName, onSubmit }: SessionFormProps) {
   const [date, setDate] = useState(today());
   const [sets, setSets] = useState<SetEntry[]>([emptySet()]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function updateSet(index: number, patch: Partial<SetEntry>) {
     setSets((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
@@ -32,12 +34,28 @@ export function SessionForm({ exerciseId, exerciseName, onSubmit }: SessionFormP
     setSets((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const validSets = sets.filter((s) => s.weight > 0 && s.reps > 0);
     if (validSets.length === 0) return;
-    onSubmit({ exerciseId, date, sets: validSets });
-    setSets([emptySet()]);
+
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      // 保存が完了するのを待ってから、フォームをクリアする。
+      // 以前はここをawaitしておらず、保存に失敗しても画面上は
+      // 成功したように見えてしまう(記録が実際には残らない)バグがあった。
+      await onSubmit({ exerciseId, date, sets: validSets });
+      setSets([emptySet()]);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? `保存に失敗しました: ${err.message}`
+          : '保存に失敗しました。もう一度お試しください。',
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -107,8 +125,10 @@ export function SessionForm({ exerciseId, exerciseName, onSubmit }: SessionFormP
         </button>
       </div>
 
-      <button type="submit" className="tl-btn tl-btn--accent tl-btn--full">
-        記録する
+      {error && <p className="tl-auth-error">{error}</p>}
+
+      <button type="submit" className="tl-btn tl-btn--accent tl-btn--full" disabled={isSubmitting}>
+        {isSubmitting ? '保存中…' : '記録する'}
       </button>
     </form>
   );
