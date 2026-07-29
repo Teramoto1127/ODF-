@@ -20,6 +20,8 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 const APP_URL = process.env.APP_URL || CLIENT_ORIGIN;
 const isProd = process.env.NODE_ENV === 'production';
 
+app.set('trust proxy', 1);
+
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
