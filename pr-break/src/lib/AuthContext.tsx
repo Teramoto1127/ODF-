@@ -8,6 +8,7 @@ import {
   requestPasswordReset,
   confirmPasswordReset,
   changePasswordApi,
+  updateGoalWeightApi,
   deleteAccountApi,
 } from './api';
 import type { ApiUser, MigratePayload } from './api';
@@ -21,6 +22,7 @@ interface AuthContextValue {
   requestReset: (email: string) => Promise<void>;
   confirmReset: (token: string, newPassword: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  updateGoalWeight: (goalWeight: number | null) => Promise<void>;
   deleteAccount: () => Promise<void>;
 }
 
@@ -67,6 +69,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await changePasswordApi(currentPassword, newPassword);
   }, []);
 
+  const updateGoalWeight = useCallback(async (goalWeight: number | null) => {
+    const result = await updateGoalWeightApi(goalWeight);
+    setUser((prev) => (prev ? { ...prev, goalWeight: result.goalWeight } : prev));
+  }, []);
+
   const deleteAccount = useCallback(async () => {
     await deleteAccountApi();
     setUser(null);
@@ -83,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         requestReset,
         confirmReset,
         changePassword,
+        updateGoalWeight,
         deleteAccount,
       }}
     >

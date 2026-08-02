@@ -18,8 +18,13 @@ export interface TrainingSession {
   date: string; // ISO yyyy-mm-dd
   sets: SetEntry[];
   note?: string;
-  /** 同じワークアウト内で記録された他の種目と紐付けるためのID */
   workoutId?: string;
+}
+
+export interface BodyWeightEntry {
+  id: string;
+  date: string; // ISO yyyy-mm-dd
+  weight: number; // kg
 }
 
 export interface PlateauResult {
