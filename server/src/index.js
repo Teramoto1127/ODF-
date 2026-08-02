@@ -16,19 +16,31 @@ import { sendPasswordResetEmail } from './mail.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
-const APP_URL = process.env.APP_URL || CLIENT_ORIGIN;
+
+const CLIENT_ORIGINS = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const APP_URL = process.env.APP_URL || CLIENT_ORIGINS[0];
 const isProd = process.env.NODE_ENV === 'production';
 
 app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
-app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || CLIENT_ORIGINS.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORSで許可されていないオリジンです: ${origin}`));
+      }
+    },
+    credentials: true,
+  }),
+);
 
-// 本番はフロントとバックエンドが別ドメイン(Vercel/Render)になるため、
-// クロスサイトCookieを許可する sameSite:'none' + secure:true が必須。
-// ローカル開発(http)ではsecure:trueだとCookieが送られないため'lax'にする。
 const COOKIE_OPTS = {
   httpOnly: true,
   sameSite: isProd ? 'none' : 'lax',
@@ -52,7 +64,11 @@ function isValidPassword(password) {
   return typeof password === 'string' && password.length >= 8;
 }
 
-async function migrateUserData(userId, { exercises = [], sessions = [] }) {
+function isValidWeight(weight) {
+  return typeof weight === 'number' && Number.isFinite(weight) && weight > 0 && weight < 500;
+}
+
+async function migrateUserData(userId, { exercises = [], sessions = [], bodyWeights = [] }) {
   for (const ex of exercises) {
     if (!ex.isCustom) continue;
     await db.execute({
@@ -64,6 +80,12 @@ async function migrateUserData(userId, { exercises = [], sessions = [] }) {
     await db.execute({
       sql: `INSERT OR IGNORE INTO sessions (id, user_id, exercise_id, date, sets_json, note, workout_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       args: [s.id, userId, s.exerciseId, s.date, JSON.stringify(s.sets), s.note ?? null, s.workoutId ?? null],
+    });
+  }
+  for (const w of bodyWeights) {
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO body_weight_logs (id, user_id, date, weight) VALUES (?, ?, ?, ?)`,
+      args: [w.id, userId, w.date, w.weight],
     });
   }
 }
@@ -101,7 +123,7 @@ app.post('/api/register', authLimiter, async (req, res) => {
 
   const token = signToken(userId);
   res.cookie('token', token, COOKIE_OPTS);
-  res.status(201).json({ id: userId, email });
+  res.status(201).json({ id: userId, email, goalWeight: null });
 });
 
 app.post('/api/login', authLimiter, async (req, res) => {
@@ -120,7 +142,7 @@ app.post('/api/login', authLimiter, async (req, res) => {
   }
   const token = signToken(user.id);
   res.cookie('token', token, COOKIE_OPTS);
-  res.json({ id: user.id, email: user.email });
+  res.json({ id: user.id, email: user.email, goalWeight: user.goal_weight ?? null });
 });
 
 app.post('/api/logout', (req, res) => {
@@ -130,10 +152,11 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', requireAuth, async (req, res) => {
   const result = await db.execute({
-    sql: 'SELECT id, email FROM users WHERE id = ?',
+    sql: 'SELECT id, email, goal_weight FROM users WHERE id = ?',
     args: [req.userId],
   });
-  res.json(result.rows[0]);
+  const user = result.rows[0];
+  res.json({ id: user.id, email: user.email, goalWeight: user.goal_weight ?? null });
 });
 
 // --- パスワードリセット ---
@@ -222,10 +245,22 @@ app.patch('/api/account/password', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+app.patch('/api/account/goal-weight', requireAuth, async (req, res) => {
+  const { goalWeight } = req.body ?? {};
+  if (goalWeight !== null && !isValidWeight(goalWeight)) {
+    return res.status(400).json({ error: '目標体重の形式が正しくありません。' });
+  }
+  await db.execute({
+    sql: 'UPDATE users SET goal_weight = ? WHERE id = ?',
+    args: [goalWeight, req.userId],
+  });
+  res.json({ goalWeight: goalWeight ?? null });
+});
+
 app.delete('/api/account', requireAuth, async (req, res) => {
-  // 外部キーのON DELETE CASCADEに頼らず、明示的に関連データを削除する。
   await db.execute({ sql: 'DELETE FROM sessions WHERE user_id = ?', args: [req.userId] });
   await db.execute({ sql: 'DELETE FROM exercises WHERE user_id = ?', args: [req.userId] });
+  await db.execute({ sql: 'DELETE FROM body_weight_logs WHERE user_id = ?', args: [req.userId] });
   await db.execute({ sql: 'DELETE FROM users WHERE id = ?', args: [req.userId] });
   res.clearCookie('token', COOKIE_OPTS);
   res.status(204).end();
@@ -395,6 +430,74 @@ app.delete('/api/sessions/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
   const result = await db.execute({
     sql: 'DELETE FROM sessions WHERE id = ? AND user_id = ?',
+    args: [id, req.userId],
+  });
+  if (result.rowsAffected === 0) {
+    return res.status(404).json({ error: '記録が見つかりません。' });
+  }
+  res.status(204).end();
+});
+
+// --- 体重ログ ---
+
+app.get('/api/body-weight', requireAuth, async (req, res) => {
+  const result = await db.execute({
+    sql: 'SELECT * FROM body_weight_logs WHERE user_id = ? ORDER BY date ASC',
+    args: [req.userId],
+  });
+  res.json(
+    result.rows.map((r) => ({
+      id: r.id,
+      date: r.date,
+      weight: r.weight,
+    })),
+  );
+});
+
+app.post('/api/body-weight', requireAuth, async (req, res) => {
+  const { date, weight } = req.body ?? {};
+  if (!date || !isValidWeight(weight)) {
+    return res.status(400).json({ error: '日付・体重の形式が正しくありません。' });
+  }
+  const id = randomUUID();
+  await db.execute({
+    sql: 'INSERT INTO body_weight_logs (id, user_id, date, weight) VALUES (?, ?, ?, ?)',
+    args: [id, req.userId, date, weight],
+  });
+  res.status(201).json({ id, date, weight });
+});
+
+app.patch('/api/body-weight/:id', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const existingResult = await db.execute({
+    sql: 'SELECT * FROM body_weight_logs WHERE id = ? AND user_id = ?',
+    args: [id, req.userId],
+  });
+  const existing = existingResult.rows[0];
+  if (!existing) {
+    return res.status(404).json({ error: '記録が見つかりません。' });
+  }
+
+  const { date, weight } = req.body ?? {};
+  if (weight !== undefined && !isValidWeight(weight)) {
+    return res.status(400).json({ error: '体重の形式が正しくありません。' });
+  }
+
+  const nextDate = date ?? existing.date;
+  const nextWeight = weight ?? existing.weight;
+
+  await db.execute({
+    sql: 'UPDATE body_weight_logs SET date = ?, weight = ? WHERE id = ? AND user_id = ?',
+    args: [nextDate, nextWeight, id, req.userId],
+  });
+
+  res.json({ id, date: nextDate, weight: nextWeight });
+});
+
+app.delete('/api/body-weight/:id', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const result = await db.execute({
+    sql: 'DELETE FROM body_weight_logs WHERE id = ? AND user_id = ?',
     args: [id, req.userId],
   });
   if (result.rowsAffected === 0) {

@@ -1,4 +1,4 @@
-import type { Exercise, MuscleGroup, TrainingSession } from './type';
+import type { BodyWeightEntry, Exercise, MuscleGroup, TrainingSession } from './type';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
 
@@ -31,11 +31,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export interface ApiUser {
   id: string;
   email: string;
+  goalWeight: number | null;
 }
 
 export interface MigratePayload {
   exercises: Exercise[];
   sessions: TrainingSession[];
+  bodyWeights?: BodyWeightEntry[];
 }
 
 export function registerUser(email: string, password: string, migrate?: MigratePayload) {
@@ -82,6 +84,13 @@ export function changePasswordApi(currentPassword: string, newPassword: string) 
   return request<{ ok: true }>('/api/account/password', {
     method: 'PATCH',
     body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export function updateGoalWeightApi(goalWeight: number | null) {
+  return request<{ goalWeight: number | null }>('/api/account/goal-weight', {
+    method: 'PATCH',
+    body: JSON.stringify({ goalWeight }),
   });
 }
 
@@ -153,4 +162,30 @@ export function updateSessionApi(id: string, patch: SessionPatch) {
 
 export function deleteSessionApi(id: string) {
   return request<void>(`/api/sessions/${id}`, { method: 'DELETE' });
+}
+
+// --- 体重ログ ---
+
+export function fetchBodyWeights() {
+  return request<BodyWeightEntry[]>('/api/body-weight');
+}
+
+export function createBodyWeightApi(entry: Omit<BodyWeightEntry, 'id'>) {
+  return request<BodyWeightEntry>('/api/body-weight', {
+    method: 'POST',
+    body: JSON.stringify(entry),
+  });
+}
+
+export type BodyWeightPatch = Partial<Pick<BodyWeightEntry, 'date' | 'weight'>>;
+
+export function updateBodyWeightApi(id: string, patch: BodyWeightPatch) {
+  return request<BodyWeightEntry>(`/api/body-weight/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+export function deleteBodyWeightApi(id: string) {
+  return request<void>(`/api/body-weight/${id}`, { method: 'DELETE' });
 }

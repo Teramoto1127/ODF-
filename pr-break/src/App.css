@@ -914,3 +914,50 @@
   line-height: 1.6;
   margin: 0;
 }
+.tl-goal-progress {
+  margin-top: 16px;
+}
+.tl-goal-progress-track {
+  height: 12px;
+  background: var(--tl-surface-2);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.tl-goal-progress-fill {
+  height: 100%;
+  background: var(--tl-effort);
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+.tl-goal-progress-text {
+  font-size: 13px;
+  color: var(--tl-chalk-dim);
+  margin: 8px 0 0;
+}
+.tl-goal-progress-text strong {
+  color: var(--tl-effort);
+  font-family: var(--tl-mono);
+}
+
+.tl-weight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tl-weight-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--tl-line);
+}
+.tl-weight-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.tl-weight-value {
+  font-family: var(--tl-mono);
+  font-weight: 700;
+  color: var(--tl-chalk);
+  margin-right: auto;
+}

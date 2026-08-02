@@ -1,3 +1,4 @@
+// pr-break/src/App.tsx
 import { useEffect, useMemo, useState } from 'react';
 import { ExercisePicker } from './components/training/ExercisePicker';
 import { SessionForm } from './components/training/SessionForm';
@@ -10,11 +11,14 @@ import { PlateauBanner } from './components/training/PlateauBanner';
 import { TrainingCalendar } from './components/training/TrainingCalendar';
 import { WeeklyVolume } from './components/training/WeeklyVolume';
 import { PersonalRecordsBoard } from './components/training/PersonalRecordsBoard';
+import { BodyWeightPanel } from './components/training/BodyWeightPanel';
+import { WeightProgressChart } from './components/training/WeightProgressChart';
 import { AuthForm } from './components/auth/AuthForm';
 import { ForgotPasswordForm } from './components/auth/ForgotPasswordForm';
 import { ResetPasswordForm } from './components/auth/ResetPasswordForm';
 import { AccountSettings } from './components/account/AccountSettings';
 import { useTrainingStore } from './lib/useTrainingStore';
+import { useBodyWeightStore } from './lib/useBodyWeightStore';
 import { useAuth } from './lib/AuthContext';
 import { buildSuggestion, detectPlateau } from './lib/plateau';
 import { calculateStreak } from './lib/streak';
@@ -23,7 +27,7 @@ import { getAllTimeBestOneRepMax } from './lib/oneRepMax';
 import './App.css';
 
 type EntryMode = 'recommend' | 'single' | 'workout';
-type ViewMode = 'byExercise' | 'byWorkout' | 'calendar' | 'volume' | 'records' | 'account';
+type ViewMode = 'byExercise' | 'byWorkout' | 'calendar' | 'volume' | 'records' | 'weight' | 'account';
 type AuthScreen = 'login' | 'forgotPassword';
 
 const VIEW_TABS: { key: ViewMode; label: string }[] = [
@@ -32,11 +36,12 @@ const VIEW_TABS: { key: ViewMode; label: string }[] = [
   { key: 'calendar', label: 'カレンダー' },
   { key: 'volume', label: '週間ボリューム' },
   { key: 'records', label: 'PR一覧' },
+  { key: 'weight', label: '体重' },
   { key: 'account', label: 'アカウント' },
 ];
 
 function App() {
-  const { user, isLoading: isAuthLoading } = useAuth();
+  const { user, isLoading: isAuthLoading, updateGoalWeight } = useAuth();
   const {
     exercises,
     sessions: allSessions,
@@ -49,6 +54,12 @@ function App() {
     deleteSession,
     getSessions,
   } = useTrainingStore();
+  const {
+    entries: bodyWeights,
+    addEntry: addBodyWeightEntry,
+    updateEntry: updateBodyWeightEntry,
+    deleteEntry: deleteBodyWeightEntry,
+  } = useBodyWeightStore();
 
   const [selectedId, setSelectedId] = useState(exercises[0]?.id ?? '');
   const [entryMode, setEntryMode] = useState<EntryMode>('recommend');
@@ -243,6 +254,19 @@ function App() {
               )}
               {viewMode === 'records' && (
                 <PersonalRecordsBoard sessions={allSessions} exercises={exercises} />
+              )}
+              {viewMode === 'weight' && (
+                <>
+                  <WeightProgressChart bodyWeights={bodyWeights} sessions={allSessions} />
+                  <BodyWeightPanel
+                    entries={bodyWeights}
+                    goalWeight={user.goalWeight}
+                    onAddEntry={addBodyWeightEntry}
+                    onUpdateEntry={updateBodyWeightEntry}
+                    onDeleteEntry={deleteBodyWeightEntry}
+                    onUpdateGoalWeight={updateGoalWeight}
+                  />
+                </>
               )}
               {viewMode === 'account' && <AccountSettings />}
             </section>
